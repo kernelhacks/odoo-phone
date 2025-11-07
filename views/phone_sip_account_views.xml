@@ -1,0 +1,76 @@
+<odoo>
+    <record id="view_phone_sip_account_tree" model="ir.ui.view">
+        <field name="name">phone.sip.account.tree</field>
+        <field name="model">phone.sip.account</field>
+        <field name="arch" type="xml">
+            <list string="SIP Accounts">
+                <field name="name"/>
+                <field name="extension"/>
+                <field name="user_id"/>
+                <field name="auth_username"/>
+                <field name="sip_domain"/>
+                <field name="sip_websocket_uri"/>
+                <field name="enabled"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_phone_sip_account_form" model="ir.ui.view">
+        <field name="name">phone.sip.account.form</field>
+        <field name="model">phone.sip.account</field>
+        <field name="arch" type="xml">
+            <form string="SIP Account">
+                <sheet>
+                    <div class="oe_button_box" name="button_box"/>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="user_id" options="{'no_create': True}"/>
+                            <field name="enabled"/>
+                            <field name="extension"/>
+                            <field name="auth_username"/>
+                            <field name="auth_password" password="True"/>
+                        </group>
+                        <group>
+                            <field name="sip_domain"/>
+                            <field name="sip_websocket_uri"/>
+                            <field name="outbound_proxy"/>
+                            <field name="stun_server"/>
+                            <field name="turn_server"/>
+                            <field name="turn_username"/>
+                            <field name="turn_password" password="True"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_phone_sip_account_search" model="ir.ui.view">
+        <field name="name">phone.sip.account.search</field>
+        <field name="model">phone.sip.account</field>
+        <field name="arch" type="xml">
+            <search string="Search SIP Accounts">
+                <field name="name"/>
+                <field name="extension"/>
+                <field name="user_id"/>
+                <filter name="enabled" string="Enabled" domain="[('enabled', '=', True)]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_phone_sip_account" model="ir.actions.act_window">
+        <field name="name">SIP Accounts</field>
+        <field name="res_model">phone.sip.account</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No SIP accounts yet
+            </p>
+            <p>
+                Create SIP accounts to expose browser-based telephony to your users. Each user should own
+                a unique extension.
+            </p>
+        </field>
+    </record>
+</odoo>

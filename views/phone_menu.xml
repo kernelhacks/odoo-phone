@@ -1,0 +1,29 @@
+<odoo>
+    <menuitem id="menu_phone_root" name="Phone" sequence="30" groups="base.group_user"/>
+
+    <menuitem
+        id="menu_phone_webphone"
+        name="Webphone"
+        parent="menu_phone_root"
+        action="action_phone_webphone"
+        sequence="10"
+        groups="base.group_user"
+    />
+
+    <menuitem
+        id="menu_phone_configuration"
+        name="Configuration"
+        parent="menu_phone_root"
+        sequence="90"
+        groups="phone.group_phone_manager"
+    />
+
+    <menuitem
+        id="menu_phone_sip_accounts"
+        name="SIP Accounts"
+        parent="menu_phone_configuration"
+        action="action_phone_sip_account"
+        sequence="10"
+        groups="phone.group_phone_manager"
+    />
+</odoo>

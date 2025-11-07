@@ -1,0 +1,28 @@
+<odoo>
+    <record id="view_users_form_phone" model="ir.ui.view">
+        <field name="name">res.users.form.phone</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Webphone" groups="base.group_user">
+                    <group>
+                        <field name="sip_extension" readonly="1"/>
+                    </group>
+                    <group groups="phone.group_phone_manager">
+                        <field name="sip_account_ids" colspan="4">
+                            <list editable="bottom">
+                                <field name="name"/>
+                                <field name="enabled"/>
+                                <field name="extension"/>
+                                <field name="auth_username"/>
+                                <field name="sip_domain"/>
+                                <field name="sip_websocket_uri"/>
+                            </list>
+                        </field>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

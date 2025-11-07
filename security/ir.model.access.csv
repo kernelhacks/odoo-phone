@@ -1,0 +1,3 @@
+"id","name","model_id:id","group_id:id","perm_read","perm_write","perm_create","perm_unlink"
+"access_phone_sip_account_manager","phone.sip.account manager","model_phone_sip_account","phone.group_phone_manager",1,1,1,1
+"access_phone_sip_account_user","phone.sip.account user","model_phone_sip_account","base.group_user",1,0,0,0

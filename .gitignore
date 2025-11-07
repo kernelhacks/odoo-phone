@@ -1,0 +1,36 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+
+# Logs
+*.log
+
+# Local environment / IDE
+.vscode/
+.idea/
+
+# Python virtualenvs
+venv/
+env/
+.env/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Node / assets artefacts
+node_modules/
+*.map
+
+# Certs / secrets
+*.pem
+*.key
+
+# Coverage / reports
+.coverage
+coverage.xml
+htmlcov/
+
+# Build artefacts
+dist/
+build/

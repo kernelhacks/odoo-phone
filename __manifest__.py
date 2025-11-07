@@ -1,0 +1,30 @@
+{
+    "name": "Phone Webphone",
+    "summary": "Embed a browser SIP softphone in Odoo with per-user extensions.",
+    "version": "19.0.1.0.0",
+    "author": "Codex Assistant",
+    "depends": ["base", "web"],
+    "data": [
+        "security/phone_security.xml",
+        "security/ir.model.access.csv",
+        "views/phone_sip_account_views.xml",
+        "views/phone_webphone_action.xml",
+        "views/phone_menu.xml",
+        "views/res_users_views.xml",
+    ],
+    "assets": {
+        "web.assets_backend": [
+            "phone/static/lib/sipjs/sip-0.21.2.min.js",
+            "phone/static/src/js/services/webphone_service.js",
+            "phone/static/src/js/components/webphone_panel.js",
+            "phone/static/src/js/components/webphone_systray.js",
+            "phone/static/src/js/fields/webphone_phone_field.js",
+            "phone/static/src/js/webphone_client_action.js",
+            "phone/static/src/xml/webphone_templates.xml",
+            "phone/static/src/scss/webphone.scss",
+        ],
+    },
+    "installable": True,
+    "application": True,
+    "license": "LGPL-3",
+}

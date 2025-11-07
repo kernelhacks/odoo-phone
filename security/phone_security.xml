@@ -1,0 +1,6 @@
+<odoo>
+    <record id="group_phone_manager" model="res.groups">
+        <field name="name">Phone Manager</field>
+        <field name="comment">Manage SIP accounts and global telephony configuration.</field>
+    </record>
+</odoo>

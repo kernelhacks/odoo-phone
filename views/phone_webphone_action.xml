@@ -1,0 +1,7 @@
+<odoo>
+    <record id="action_phone_webphone" model="ir.actions.client">
+        <field name="name">Webphone</field>
+        <field name="tag">phone.webphone_client_action</field>
+        <field name="target">main</field>
+    </record>
+</odoo>
