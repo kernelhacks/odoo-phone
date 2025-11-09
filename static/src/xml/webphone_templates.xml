@@ -77,9 +77,16 @@
                         <button
                             class="btn btn-success flex-grow-1"
                             t-on-click="onPlaceCall"
-                            t-att-disabled="state.callStatus == 'in_call' or state.callStatus == 'dialing'"
+                            t-att-disabled="['in_call','dialing','transferring'].includes(state.callStatus)"
                         >
                             <i class="fa fa-phone me-2"/>Call
+                        </button>
+                        <button
+                            class="btn btn-warning flex-grow-1"
+                            t-on-click="onTransferCall"
+                            t-att-disabled="state.callStatus != 'in_call'"
+                        >
+                            <i class="fa fa-random me-2"/>Transfer
                         </button>
                         <button
                             class="btn btn-danger flex-grow-1"

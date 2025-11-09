@@ -372,6 +372,35 @@ registry.category("services").add("webphone", {
             }
         };
 
+        const transferCall = async () => {
+            if (!currentSession || state.callStatus !== "in_call") {
+                notification.add(_t("You need to be in a call to transfer it."), { type: "warning" });
+                return;
+            }
+            const target = (state.dialNumber || "").trim();
+            if (!target) {
+                notification.add(_t("Enter a destination number to transfer the call."), {
+                    type: "warning",
+                });
+                return;
+            }
+            const SIP = window.SIP;
+            const destination = SIP.UserAgent.makeURI(`sip:${target}@${state.account.domain}`);
+            if (!destination) {
+                notification.add(_t("The transfer destination is invalid."), { type: "danger" });
+                return;
+            }
+            state.callStatus = "transferring";
+            try {
+                await currentSession.refer(destination);
+                notification.add(_t("Transfer initiated."), { type: "success" });
+            } catch (error) {
+                console.error("Error transferring call", error);
+                notification.add(_t("Unable to transfer the call."), { type: "danger" });
+                state.callStatus = "in_call";
+            }
+        };
+
         const updateDialNumber = (value) => {
             state.dialNumber = value;
         };
@@ -415,6 +444,7 @@ registry.category("services").add("webphone", {
             acceptIncoming,
             rejectIncoming,
             hangup,
+            transferCall,
             updateDialNumber,
             appendDigit,
             backspaceDigit,

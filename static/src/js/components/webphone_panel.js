@@ -110,6 +110,10 @@ export class WebphonePanel extends Component {
         this.webphone.hangup();
     }
 
+    onTransferCall() {
+        this.webphone.transferCall();
+    }
+
     onDialInput(ev) {
         this.webphone.updateDialNumber(ev.target.value);
     }
