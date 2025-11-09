@@ -35,6 +35,10 @@ registry.category("services").add("webphone", {
             incomingCaller: "",
             error: null,
             incomingRinging: false,
+            attendedActive: false,
+            attendedReady: false,
+            attendedNumber: "",
+            attendedStatus: "idle",
         });
 
         let sipLibraryPromise = null;
@@ -44,6 +48,8 @@ registry.category("services").add("webphone", {
         let currentSession = null;
         let pendingIncomingSession = null;
         let audioElement = null;
+        let attendedSession = null;
+        let currentSessionOnHold = false;
 
         const ensureSipLibrary = async () => {
             if (window.SIP) {
@@ -59,6 +65,7 @@ registry.category("services").add("webphone", {
         };
 
         const stopUserAgent = async () => {
+            clearAttendedState({ hangupSession: true, resumeMain: false });
             if (currentSession) {
                 try {
                     if (typeof currentSession.bye === "function") {
@@ -97,6 +104,7 @@ registry.category("services").add("webphone", {
                 }
                 userAgent = null;
             }
+            currentSessionOnHold = false;
         };
 
         const attachRemoteStream = (sdh) => {
@@ -116,14 +124,103 @@ registry.category("services").add("webphone", {
             play();
         };
 
+        const reattachCurrentSessionAudio = () => {
+            if (currentSession?.sessionDescriptionHandler) {
+                attachRemoteStream(currentSession.sessionDescriptionHandler);
+            }
+        };
+
+        const setMainCallHold = async (shouldHold) => {
+            if (!currentSession) {
+                currentSessionOnHold = false;
+                return;
+            }
+            if (currentSessionOnHold === shouldHold) {
+                return;
+            }
+            if (typeof currentSession.invite !== "function") {
+                notification.add(
+                    _t("The current call cannot be renegotiated to manage hold state."),
+                    { type: "danger" }
+                );
+                throw new Error("hold_not_supported");
+            }
+            const holdModifier = window.SIP?.Web?.holdModifier;
+            if (shouldHold && !holdModifier) {
+                notification.add(_t("Hold is not supported in this browser/webphone setup."), {
+                    type: "danger",
+                });
+                throw new Error("hold_not_supported");
+            }
+            try {
+                await currentSession.invite({
+                    sessionDescriptionHandlerModifiers: shouldHold && holdModifier ? [holdModifier] : [],
+                });
+                currentSessionOnHold = shouldHold;
+                if (!shouldHold) {
+                    reattachCurrentSessionAudio();
+                }
+            } catch (error) {
+                console.error("Error toggling hold state", error);
+                notification.add(
+                    shouldHold
+                        ? _t("Unable to place the caller on hold.")
+                        : _t("Unable to resume the held caller."),
+                    { type: "danger" }
+                );
+                throw error;
+            }
+        };
+
+        const terminateAttendedSession = () => {
+            if (!attendedSession) {
+                return;
+            }
+            try {
+                const SessionState = window.SIP?.SessionState;
+                const isEstablishing =
+                    SessionState && attendedSession.state === SessionState.Establishing;
+                if (typeof attendedSession.bye === "function" && !isEstablishing) {
+                    attendedSession.bye();
+                } else if (typeof attendedSession.cancel === "function" && isEstablishing) {
+                    attendedSession.cancel();
+                } else if (typeof attendedSession.dispose === "function") {
+                    attendedSession.dispose();
+                }
+            } catch (error) {
+                console.warn("Error terminating attended transfer session", error);
+            }
+        };
+
+        const clearAttendedState = ({ hangupSession = false, resumeMain = true } = {}) => {
+            if (hangupSession) {
+                terminateAttendedSession();
+            }
+            attendedSession = null;
+            state.attendedActive = false;
+            state.attendedReady = false;
+            state.attendedNumber = "";
+            state.attendedStatus = "idle";
+            if (["attended_consult", "attended_ready"].includes(state.callStatus)) {
+                state.callStatus = currentSession ? "in_call" : "idle";
+            }
+            if (resumeMain) {
+                setMainCallHold(false).catch(() => {});
+            }
+            reattachCurrentSessionAudio();
+        };
+
         const onCallTerminated = () => {
             currentSession = null;
             state.callStatus = "idle";
             state.incomingRinging = false;
+            currentSessionOnHold = false;
+            clearAttendedState({ hangupSession: true, resumeMain: false });
         };
 
         const configureSession = (session) => {
             currentSession = session;
+            currentSessionOnHold = false;
             const { SessionState } = window.SIP;
             session.delegate = Object.assign({}, session.delegate, {
                 onBye: () => onCallTerminated(),
@@ -138,6 +235,27 @@ registry.category("services").add("webphone", {
                 }
                 if (newState === SessionState.Terminated) {
                     onCallTerminated();
+                }
+            });
+        };
+
+        const configureAttendedSession = (session) => {
+            const { SessionState } = window.SIP;
+            session.delegate = Object.assign({}, session.delegate, {
+                onBye: () => clearAttendedState(),
+                onSessionDescriptionHandler: (sdh) => attachRemoteStream(sdh),
+            });
+            if (session.sessionDescriptionHandler) {
+                attachRemoteStream(session.sessionDescriptionHandler);
+            }
+            session.stateChange.addListener((newState) => {
+                if (newState === SessionState.Established) {
+                    state.attendedReady = true;
+                    state.attendedStatus = "ready";
+                    state.callStatus = "attended_ready";
+                }
+                if (newState === SessionState.Terminated) {
+                    clearAttendedState();
                 }
             });
         };
@@ -274,7 +392,15 @@ registry.category("services").add("webphone", {
         };
 
         const placeCall = async () => {
-            if (state.callStatus === "in_call" || state.callStatus === "dialing") {
+            if (
+                [
+                    "in_call",
+                    "dialing",
+                    "attended_consult",
+                    "attended_ready",
+                    "attended_transferring",
+                ].includes(state.callStatus)
+            ) {
                 return;
             }
             const ready = await ensureReadyForCall();
@@ -351,6 +477,9 @@ registry.category("services").add("webphone", {
         };
 
         const hangup = () => {
+            if (attendedSession) {
+                clearAttendedState({ hangupSession: true, resumeMain: false });
+            }
             if (!currentSession) {
                 rejectIncoming();
                 return;
@@ -401,6 +530,103 @@ registry.category("services").add("webphone", {
             }
         };
 
+        const startAttendedTransfer = async () => {
+            if (!currentSession || state.callStatus !== "in_call") {
+                notification.add(_t("You need to be in a call to start an attended transfer."), {
+                    type: "warning",
+                });
+                return;
+            }
+            if (attendedSession) {
+                notification.add(_t("An attended transfer is already in progress."), {
+                    type: "warning",
+                });
+                return;
+            }
+            if (!userAgent) {
+                notification.add(_t("Webphone is not ready for an attended transfer yet."), {
+                    type: "warning",
+                });
+                return;
+            }
+            const target = (state.dialNumber || "").trim();
+            if (!target) {
+                notification.add(_t("Enter a destination number to consult before transferring."), {
+                    type: "warning",
+                });
+                return;
+            }
+            const SIP = window.SIP;
+            const destination = SIP.UserAgent.makeURI(`sip:${target}@${state.account.domain}`);
+            if (!destination) {
+                notification.add(_t("The consult destination is invalid."), { type: "danger" });
+                return;
+            }
+            try {
+                await setMainCallHold(true);
+            } catch (error) {
+                return;
+            }
+            state.attendedActive = true;
+            state.attendedReady = false;
+            state.attendedNumber = target;
+            state.attendedStatus = "consulting";
+            state.callStatus = "attended_consult";
+            try {
+                const inviter = new SIP.Inviter(userAgent, destination, {
+                    sessionDescriptionHandlerOptions: {
+                        constraints: { audio: true, video: false },
+                    },
+                });
+                attendedSession = inviter;
+                configureAttendedSession(inviter);
+                await inviter.invite();
+            } catch (error) {
+                console.error("Error starting attended transfer", error);
+                notification.add(_t("Unable to start the attended transfer."), { type: "danger" });
+                clearAttendedState({ hangupSession: true });
+                state.callStatus = currentSession ? "in_call" : "idle";
+            }
+        };
+
+        const completeAttendedTransfer = async () => {
+            if (!currentSession || !attendedSession) {
+                notification.add(_t("No attended transfer is currently in progress."), {
+                    type: "warning",
+                });
+                return;
+            }
+            if (!state.attendedReady) {
+                notification.add(_t("Wait until the consult call is connected before transferring."), {
+                    type: "warning",
+                });
+                return;
+            }
+            state.attendedStatus = "transferring";
+            state.callStatus = "attended_transferring";
+            try {
+                await currentSession.refer(attendedSession);
+                notification.add(_t("Attended transfer initiated."), { type: "success" });
+                clearAttendedState({ hangupSession: true, resumeMain: false });
+                hangup();
+            } catch (error) {
+                console.error("Error completing attended transfer", error);
+                notification.add(_t("Unable to complete the attended transfer."), {
+                    type: "danger",
+                });
+                state.attendedStatus = "ready";
+                state.callStatus = "attended_ready";
+            }
+        };
+
+        const cancelAttendedTransfer = () => {
+            if (!attendedSession && !state.attendedActive) {
+                return;
+            }
+            clearAttendedState({ hangupSession: true });
+            notification.add(_t("Attended transfer cancelled."), { type: "info" });
+        };
+
         const updateDialNumber = (value) => {
             state.dialNumber = value;
         };
@@ -445,6 +671,9 @@ registry.category("services").add("webphone", {
             rejectIncoming,
             hangup,
             transferCall,
+            startAttendedTransfer,
+            completeAttendedTransfer,
+            cancelAttendedTransfer,
             updateDialNumber,
             appendDigit,
             backspaceDigit,

@@ -114,6 +114,18 @@ export class WebphonePanel extends Component {
         this.webphone.transferCall();
     }
 
+    onStartAttendedTransfer() {
+        this.webphone.startAttendedTransfer();
+    }
+
+    onCompleteAttendedTransfer() {
+        this.webphone.completeAttendedTransfer();
+    }
+
+    onCancelAttendedTransfer() {
+        this.webphone.cancelAttendedTransfer();
+    }
+
     onDialInput(ev) {
         this.webphone.updateDialNumber(ev.target.value);
     }

@@ -149,6 +149,12 @@
     clip: rect(0 0 0 0);
 }
 
+.o_webphone_attended_actions {
+    .small {
+        color: var(--o-gray-700);
+    }
+}
+
 .o_webphone_banner {
     position: fixed;
     top: 76px;
