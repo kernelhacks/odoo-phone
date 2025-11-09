@@ -39,6 +39,7 @@ registry.category("services").add("webphone", {
             attendedReady: false,
             attendedNumber: "",
             attendedStatus: "idle",
+            conferenceActive: false,
             holdActive: false,
             muted: false,
         });
@@ -49,10 +50,11 @@ registry.category("services").add("webphone", {
         let registerer = null;
         let currentSession = null;
         let pendingIncomingSession = null;
-        let audioElement = null;
+        let primaryAudioElement = null;
+        let secondaryAudioElement = null;
         let attendedSession = null;
         let currentSessionOnHold = false;
-        let localStream = null;
+        const localStreams = new Set();
         let localAudioMuted = false;
 
         const ensureSipLibrary = async () => {
@@ -110,20 +112,24 @@ registry.category("services").add("webphone", {
             }
             currentSessionOnHold = false;
             state.holdActive = false;
-            localStream = null;
+            localStreams.clear();
             localAudioMuted = false;
             state.muted = false;
         };
 
-        const attachRemoteStream = (sdh) => {
-            if (!sdh || !audioElement) {
+        const attachRemoteStream = (sdh, { target = "primary" } = {}) => {
+            if (!sdh) {
+                return;
+            }
+            const element = target === "secondary" ? secondaryAudioElement : primaryAudioElement;
+            if (!element) {
                 return;
             }
             const play = () => {
                 const remoteStream = sdh.remoteMediaStream;
                 if (remoteStream) {
-                    audioElement.srcObject = remoteStream;
-                    audioElement.play().catch(() => {});
+                    element.srcObject = remoteStream;
+                    element.play().catch(() => {});
                 }
                 updateLocalStream(sdh);
             };
@@ -138,20 +144,27 @@ registry.category("services").add("webphone", {
                 return;
             }
             if (sdh.localMediaStream) {
-                localStream = sdh.localMediaStream;
+                localStreams.add(sdh.localMediaStream);
             }
-            if (localStream) {
-                localStream.getAudioTracks().forEach((track) => {
+            for (const stream of localStreams) {
+                stream.getAudioTracks().forEach((track) => {
                     track.enabled = !localAudioMuted;
                 });
+            }
+        };
+
+        const unregisterSessionStream = (session) => {
+            const stream = session?.sessionDescriptionHandler?.localMediaStream;
+            if (stream && localStreams.has(stream)) {
+                localStreams.delete(stream);
             }
         };
 
         const setMuteState = (shouldMute) => {
             localAudioMuted = shouldMute;
             state.muted = shouldMute;
-            if (localStream) {
-                localStream.getAudioTracks().forEach((track) => {
+            for (const stream of localStreams) {
+                stream.getAudioTracks().forEach((track) => {
                     track.enabled = !shouldMute;
                 });
             }
@@ -235,6 +248,7 @@ registry.category("services").add("webphone", {
         };
 
         const clearAttendedState = ({ hangupSession = false, resumeMain = true } = {}) => {
+            const sessionToClear = attendedSession;
             if (hangupSession) {
                 terminateAttendedSession();
             }
@@ -243,23 +257,29 @@ registry.category("services").add("webphone", {
             state.attendedReady = false;
             state.attendedNumber = "";
             state.attendedStatus = "idle";
-            if (["attended_consult", "attended_ready"].includes(state.callStatus)) {
+            state.conferenceActive = false;
+            if (["attended_consult", "attended_ready", "conference"].includes(state.callStatus)) {
                 state.callStatus = currentSession ? "in_call" : "idle";
             }
             if (resumeMain) {
                 setMainCallHold(false, { silent: true }).catch(() => {});
             }
+            unregisterSessionStream(sessionToClear);
+            if (secondaryAudioElement) {
+                secondaryAudioElement.srcObject = null;
+            }
             reattachCurrentSessionAudio();
         };
 
         const onCallTerminated = () => {
+            unregisterSessionStream(currentSession);
             currentSession = null;
             state.callStatus = "idle";
             state.incomingRinging = false;
             currentSessionOnHold = false;
             state.holdActive = false;
             setMuteState(false);
-            localStream = null;
+            localStreams.clear();
             clearAttendedState({ hangupSession: true, resumeMain: false });
         };
 
@@ -269,10 +289,10 @@ registry.category("services").add("webphone", {
             const { SessionState } = window.SIP;
             session.delegate = Object.assign({}, session.delegate, {
                 onBye: () => onCallTerminated(),
-                onSessionDescriptionHandler: (sdh) => attachRemoteStream(sdh),
+                onSessionDescriptionHandler: (sdh) => attachRemoteStream(sdh, { target: "primary" }),
             });
             if (session.sessionDescriptionHandler) {
-                attachRemoteStream(session.sessionDescriptionHandler);
+                attachRemoteStream(session.sessionDescriptionHandler, { target: "primary" });
             }
             session.stateChange.addListener((newState) => {
                 if (newState === SessionState.Established) {
@@ -288,10 +308,10 @@ registry.category("services").add("webphone", {
             const { SessionState } = window.SIP;
             session.delegate = Object.assign({}, session.delegate, {
                 onBye: () => clearAttendedState(),
-                onSessionDescriptionHandler: (sdh) => attachRemoteStream(sdh),
+                onSessionDescriptionHandler: (sdh) => attachRemoteStream(sdh, { target: "secondary" }),
             });
             if (session.sessionDescriptionHandler) {
-                attachRemoteStream(session.sessionDescriptionHandler);
+                attachRemoteStream(session.sessionDescriptionHandler, { target: "secondary" });
             }
             session.stateChange.addListener((newState) => {
                 if (newState === SessionState.Established) {
@@ -444,6 +464,7 @@ registry.category("services").add("webphone", {
                     "attended_consult",
                     "attended_ready",
                     "attended_transferring",
+                    "conference",
                 ].includes(state.callStatus)
             ) {
                 return;
@@ -547,8 +568,18 @@ registry.category("services").add("webphone", {
         };
 
         const transferCall = async () => {
-            if (!currentSession || state.callStatus !== "in_call") {
+            if (!currentSession || !["in_call", "conference"].includes(state.callStatus)) {
                 notification.add(_t("You need to be in a call to transfer it."), { type: "warning" });
+                return;
+            }
+            if (state.attendedActive && !state.conferenceActive) {
+                notification.add(_t("Finish or cancel the attended transfer first."), {
+                    type: "warning",
+                });
+                return;
+            }
+            if (state.conferenceActive) {
+                notification.add(_t("Transfer is disabled during a conference."), { type: "warning" });
                 return;
             }
             const target = (state.dialNumber || "").trim();
@@ -581,7 +612,7 @@ registry.category("services").add("webphone", {
                 return;
             }
             if (state.attendedActive) {
-                notification.add(_t("Cannot toggle hold while an attended transfer is running."), {
+                notification.add(_t("Cannot toggle hold while an attended transfer or conference is running."), {
                     type: "warning",
                 });
                 return;
@@ -600,6 +631,51 @@ registry.category("services").add("webphone", {
                 return;
             }
             setMuteState(!state.muted);
+        };
+
+        const startConference = async () => {
+            if (!currentSession || !attendedSession) {
+                notification.add(_t("You need two active calls to start a conference."), {
+                    type: "warning",
+                });
+                return;
+            }
+            if (!state.attendedReady) {
+                notification.add(_t("Wait until the consult call is connected before conferencing."), {
+                    type: "warning",
+                });
+                return;
+            }
+            if (state.conferenceActive) {
+                return;
+            }
+            try {
+                await setMainCallHold(false, { silent: true });
+            } catch (_error) {
+                notification.add(_t("Unable to resume the original caller for conferencing."), {
+                    type: "danger",
+                });
+                return;
+            }
+            state.conferenceActive = true;
+            state.callStatus = "conference";
+            state.attendedStatus = "conference";
+            state.holdActive = false;
+            if (currentSession.sessionDescriptionHandler) {
+                attachRemoteStream(currentSession.sessionDescriptionHandler, { target: "primary" });
+            }
+            if (attendedSession.sessionDescriptionHandler) {
+                attachRemoteStream(attendedSession.sessionDescriptionHandler, { target: "secondary" });
+            }
+        };
+
+        const endConference = () => {
+            if (!state.conferenceActive) {
+                return;
+            }
+            clearAttendedState({ hangupSession: true });
+            state.conferenceActive = false;
+            notification.add(_t("Conference ended."), { type: "info" });
         };
 
         const startAttendedTransfer = async () => {
@@ -644,6 +720,7 @@ registry.category("services").add("webphone", {
             state.attendedNumber = target;
             state.attendedStatus = "consulting";
             state.callStatus = "attended_consult";
+            state.conferenceActive = false;
             try {
                 const inviter = new SIP.Inviter(userAgent, destination, {
                     sessionDescriptionHandlerOptions: {
@@ -664,6 +741,12 @@ registry.category("services").add("webphone", {
         const completeAttendedTransfer = async () => {
             if (!currentSession || !attendedSession) {
                 notification.add(_t("No attended transfer is currently in progress."), {
+                    type: "warning",
+                });
+                return;
+            }
+            if (state.conferenceActive) {
+                notification.add(_t("Cannot transfer while a conference is active."), {
                     type: "warning",
                 });
                 return;
@@ -695,8 +778,12 @@ registry.category("services").add("webphone", {
             if (!attendedSession && !state.attendedActive) {
                 return;
             }
+            const wasConference = state.conferenceActive;
             clearAttendedState({ hangupSession: true });
-            notification.add(_t("Attended transfer cancelled."), { type: "info" });
+            notification.add(
+                wasConference ? _t("Conference ended.") : _t("Attended transfer cancelled."),
+                { type: "info" }
+            );
         };
 
         const updateDialNumber = (value) => {
@@ -711,8 +798,13 @@ registry.category("services").add("webphone", {
             state.dialNumber = (state.dialNumber || "").slice(0, -1);
         };
 
-        const setAudioElement = (el) => {
-            audioElement = el;
+        const setAudioElements = (primaryEl, secondaryEl) => {
+            primaryAudioElement = primaryEl;
+            secondaryAudioElement = secondaryEl;
+            reattachCurrentSessionAudio();
+            if (attendedSession?.sessionDescriptionHandler) {
+                attachRemoteStream(attendedSession.sessionDescriptionHandler, { target: "secondary" });
+            }
         };
 
         const closePanel = () => {
@@ -745,13 +837,15 @@ registry.category("services").add("webphone", {
             transferCall,
             toggleHold,
             toggleMute,
+            startConference,
+            endConference,
             startAttendedTransfer,
             completeAttendedTransfer,
             cancelAttendedTransfer,
             updateDialNumber,
             appendDigit,
             backspaceDigit,
-            setAudioElement,
+            setAudioElements,
         };
     },
 });

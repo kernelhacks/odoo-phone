@@ -36,6 +36,7 @@ export class WebphonePanel extends Component {
         this.webphone = useService("webphone");
         this.state = useState(this.webphone.state);
         this.remoteAudio = useRef("remoteAudio");
+        this.conferenceAudio = useRef("conferenceAudio");
         this.incomingAudio = useRef("incomingAudio");
         this.bannerRef = useRef("incomingBanner");
         this.bannerDrag = useState({
@@ -51,7 +52,7 @@ export class WebphonePanel extends Component {
         this.toneContext = null;
         this.toneMasterGain = null;
         onMounted(() => {
-            this.webphone.setAudioElement(this.remoteAudio.el);
+            this.webphone.setAudioElements(this.remoteAudio.el, this.conferenceAudio.el);
         });
         useEffect(
             () => {
@@ -120,6 +121,14 @@ export class WebphonePanel extends Component {
 
     onToggleMute() {
         this.webphone.toggleMute();
+    }
+
+    onStartConference() {
+        this.webphone.startConference();
+    }
+
+    onEndConference() {
+        this.webphone.endConference();
     }
 
     onStartAttendedTransfer() {
