@@ -89,7 +89,6 @@
                             <i class="fa fa-phone-slash me-2"/>Hang up
                         </button>
                     </div>
-                    <audio t-ref="remoteAudio" autoplay="autoplay"/>
                 </div>
             </div>
         </div>
@@ -122,6 +121,16 @@
                     <i class="fa fa-check me-1"/>Answer
                 </button>
             </div>
+        </div>
+        <div class="o_webphone_audio_buffers">
+            <audio t-ref="remoteAudio" autoplay="autoplay" playsinline="playsinline"/>
+            <audio
+                t-ref="incomingAudio"
+                loop="loop"
+                preload="auto"
+                playsinline="playsinline"
+                src="/phone/static/src/audio/incoming_ring.wav"
+            />
         </div>
     </t>
 

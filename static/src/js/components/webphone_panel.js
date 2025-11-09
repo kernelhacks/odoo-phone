@@ -1,6 +1,14 @@
 /** @odoo-module **/
 
-import { Component, onMounted, useEffect, useExternalListener, useRef, useState } from "@odoo/owl";
+import {
+    Component,
+    onMounted,
+    onWillUnmount,
+    useEffect,
+    useExternalListener,
+    useRef,
+    useState,
+} from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 
 export class WebphonePanel extends Component {
@@ -13,6 +21,7 @@ export class WebphonePanel extends Component {
         this.webphone = useService("webphone");
         this.state = useState(this.webphone.state);
         this.remoteAudio = useRef("remoteAudio");
+        this.incomingAudio = useRef("incomingAudio");
         this.bannerRef = useRef("incomingBanner");
         this.bannerDrag = useState({
             dragging: false,
@@ -23,6 +32,7 @@ export class WebphonePanel extends Component {
             x: null,
             y: null,
         });
+        this.isIncomingAudioPlaying = false;
         onMounted(() => {
             this.webphone.setAudioElement(this.remoteAudio.el);
         });
@@ -34,6 +44,17 @@ export class WebphonePanel extends Component {
             },
             () => [this.state.callStatus]
         );
+        useEffect(
+            () => {
+                if (this.state.callStatus === "incoming" && this.state.incomingRinging) {
+                    this.playIncomingTone();
+                } else {
+                    this.stopIncomingTone();
+                }
+            },
+            () => [this.state.callStatus, this.state.incomingRinging]
+        );
+        onWillUnmount(() => this.stopIncomingTone());
         if (typeof window !== "undefined") {
             useExternalListener(window, "pointermove", (ev) => this.onBannerPointerMove(ev));
             useExternalListener(window, "pointerup", (ev) => this.onBannerPointerUp(ev));
@@ -174,5 +195,31 @@ export class WebphonePanel extends Component {
 
     isBannerDragging() {
         return this.bannerDrag.dragging;
+    }
+
+    playIncomingTone() {
+        const audio = this.incomingAudio.el;
+        if (!audio || this.isIncomingAudioPlaying) {
+            return;
+        }
+        audio.currentTime = 0;
+        const playPromise = audio.play();
+        this.isIncomingAudioPlaying = true;
+        if (playPromise?.catch) {
+            playPromise.catch(() => {
+                this.isIncomingAudioPlaying = false;
+            });
+        }
+    }
+
+    stopIncomingTone() {
+        const audio = this.incomingAudio.el;
+        if (!audio) {
+            this.isIncomingAudioPlaying = false;
+            return;
+        }
+        audio.pause();
+        audio.currentTime = 0;
+        this.isIncomingAudioPlaying = false;
     }
 }
