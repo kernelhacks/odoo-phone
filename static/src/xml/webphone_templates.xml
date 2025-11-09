@@ -103,7 +103,7 @@
                                 type="button"
                                 t-on-click="onStartAttendedTransfer"
                             >
-                                <i class="fa fa-user-tag me-2"/>Attended transfer
+                                <i class="fa fa-user-tag me-2"/>Att. transfer
                             </button>
                         </t>
                         <t t-elif="state.attendedActive">
