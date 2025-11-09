@@ -96,6 +96,26 @@
                             <i class="fa fa-phone-slash me-2"/>Hang up
                         </button>
                     </div>
+                    <div class="o_webphone_media_actions mt-2">
+                        <button
+                            type="button"
+                            t-attf-class="btn flex-grow-1 #{state.holdActive ? 'btn-warning' : 'btn-outline-secondary'}"
+                            t-att-disabled="state.callStatus != 'in_call' or state.attendedActive"
+                            t-on-click="onToggleHold"
+                        >
+                            <i class="fa fa-pause me-2"/>
+                            <t t-esc="state.holdActive ? 'Resume' : 'Hold'"/>
+                        </button>
+                        <button
+                            type="button"
+                            t-attf-class="btn flex-grow-1 #{state.muted ? 'btn-secondary' : 'btn-outline-secondary'}"
+                            t-att-disabled="!['in_call','attended_consult','attended_ready','attended_transferring'].includes(state.callStatus)"
+                            t-on-click="onToggleMute"
+                        >
+                            <i t-att-class="state.muted ? 'fa fa-microphone-slash me-2' : 'fa fa-microphone me-2'"/>
+                            <t t-esc="state.muted ? 'Unmute' : 'Mute'"/>
+                        </button>
+                    </div>
                     <div class="o_webphone_attended_actions mt-2">
                         <t t-if="state.callStatus == 'in_call' and !state.attendedActive">
                             <button

@@ -39,6 +39,8 @@ registry.category("services").add("webphone", {
             attendedReady: false,
             attendedNumber: "",
             attendedStatus: "idle",
+            holdActive: false,
+            muted: false,
         });
 
         let sipLibraryPromise = null;
@@ -50,6 +52,8 @@ registry.category("services").add("webphone", {
         let audioElement = null;
         let attendedSession = null;
         let currentSessionOnHold = false;
+        let localStream = null;
+        let localAudioMuted = false;
 
         const ensureSipLibrary = async () => {
             if (window.SIP) {
@@ -105,6 +109,10 @@ registry.category("services").add("webphone", {
                 userAgent = null;
             }
             currentSessionOnHold = false;
+            state.holdActive = false;
+            localStream = null;
+            localAudioMuted = false;
+            state.muted = false;
         };
 
         const attachRemoteStream = (sdh) => {
@@ -117,11 +125,36 @@ registry.category("services").add("webphone", {
                     audioElement.srcObject = remoteStream;
                     audioElement.play().catch(() => {});
                 }
+                updateLocalStream(sdh);
             };
             if (sdh.on) {
                 sdh.on("addTrack", play);
             }
             play();
+        };
+
+        const updateLocalStream = (sdh) => {
+            if (!sdh) {
+                return;
+            }
+            if (sdh.localMediaStream) {
+                localStream = sdh.localMediaStream;
+            }
+            if (localStream) {
+                localStream.getAudioTracks().forEach((track) => {
+                    track.enabled = !localAudioMuted;
+                });
+            }
+        };
+
+        const setMuteState = (shouldMute) => {
+            localAudioMuted = shouldMute;
+            state.muted = shouldMute;
+            if (localStream) {
+                localStream.getAudioTracks().forEach((track) => {
+                    track.enabled = !shouldMute;
+                });
+            }
         };
 
         const reattachCurrentSessionAudio = () => {
@@ -130,26 +163,32 @@ registry.category("services").add("webphone", {
             }
         };
 
-        const setMainCallHold = async (shouldHold) => {
+        const setMainCallHold = async (shouldHold, { silent = false } = {}) => {
             if (!currentSession) {
                 currentSessionOnHold = false;
+                state.holdActive = false;
                 return;
             }
             if (currentSessionOnHold === shouldHold) {
+                state.holdActive = shouldHold;
                 return;
             }
             if (typeof currentSession.invite !== "function") {
-                notification.add(
-                    _t("The current call cannot be renegotiated to manage hold state."),
-                    { type: "danger" }
-                );
+                if (!silent) {
+                    notification.add(
+                        _t("The current call cannot be renegotiated to manage hold state."),
+                        { type: "danger" }
+                    );
+                }
                 throw new Error("hold_not_supported");
             }
             const holdModifier = window.SIP?.Web?.holdModifier;
             if (shouldHold && !holdModifier) {
-                notification.add(_t("Hold is not supported in this browser/webphone setup."), {
-                    type: "danger",
-                });
+                if (!silent) {
+                    notification.add(_t("Hold is not supported in this browser/webphone setup."), {
+                        type: "danger",
+                    });
+                }
                 throw new Error("hold_not_supported");
             }
             try {
@@ -157,17 +196,20 @@ registry.category("services").add("webphone", {
                     sessionDescriptionHandlerModifiers: shouldHold && holdModifier ? [holdModifier] : [],
                 });
                 currentSessionOnHold = shouldHold;
+                state.holdActive = shouldHold;
                 if (!shouldHold) {
                     reattachCurrentSessionAudio();
                 }
             } catch (error) {
                 console.error("Error toggling hold state", error);
-                notification.add(
-                    shouldHold
-                        ? _t("Unable to place the caller on hold.")
-                        : _t("Unable to resume the held caller."),
-                    { type: "danger" }
-                );
+                if (!silent) {
+                    notification.add(
+                        shouldHold
+                            ? _t("Unable to place the caller on hold.")
+                            : _t("Unable to resume the held caller."),
+                        { type: "danger" }
+                    );
+                }
                 throw error;
             }
         };
@@ -205,7 +247,7 @@ registry.category("services").add("webphone", {
                 state.callStatus = currentSession ? "in_call" : "idle";
             }
             if (resumeMain) {
-                setMainCallHold(false).catch(() => {});
+                setMainCallHold(false, { silent: true }).catch(() => {});
             }
             reattachCurrentSessionAudio();
         };
@@ -215,6 +257,9 @@ registry.category("services").add("webphone", {
             state.callStatus = "idle";
             state.incomingRinging = false;
             currentSessionOnHold = false;
+            state.holdActive = false;
+            setMuteState(false);
+            localStream = null;
             clearAttendedState({ hangupSession: true, resumeMain: false });
         };
 
@@ -530,6 +575,33 @@ registry.category("services").add("webphone", {
             }
         };
 
+        const toggleHold = async () => {
+            if (!currentSession) {
+                notification.add(_t("No active call to put on hold."), { type: "warning" });
+                return;
+            }
+            if (state.attendedActive) {
+                notification.add(_t("Cannot toggle hold while an attended transfer is running."), {
+                    type: "warning",
+                });
+                return;
+            }
+            const targetState = !state.holdActive;
+            try {
+                await setMainCallHold(targetState);
+            } catch (_error) {
+                // errors already notified inside helper when not silent
+            }
+        };
+
+        const toggleMute = () => {
+            if (!currentSession && !attendedSession) {
+                notification.add(_t("No active audio session to mute."), { type: "warning" });
+                return;
+            }
+            setMuteState(!state.muted);
+        };
+
         const startAttendedTransfer = async () => {
             if (!currentSession || state.callStatus !== "in_call") {
                 notification.add(_t("You need to be in a call to start an attended transfer."), {
@@ -563,7 +635,7 @@ registry.category("services").add("webphone", {
                 return;
             }
             try {
-                await setMainCallHold(true);
+                await setMainCallHold(true, { silent: true });
             } catch (error) {
                 return;
             }
@@ -671,6 +743,8 @@ registry.category("services").add("webphone", {
             rejectIncoming,
             hangup,
             transferCall,
+            toggleHold,
+            toggleMute,
             startAttendedTransfer,
             completeAttendedTransfer,
             cancelAttendedTransfer,

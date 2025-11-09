@@ -141,6 +141,15 @@
     margin-top: 1rem;
 }
 
+.o_webphone_media_actions {
+    display: flex;
+    gap: 0.5rem;
+
+    .btn {
+        white-space: nowrap;
+    }
+}
+
 .o_webphone_audio_buffers {
     position: absolute;
     width: 0;

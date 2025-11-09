@@ -114,6 +114,14 @@ export class WebphonePanel extends Component {
         this.webphone.transferCall();
     }
 
+    onToggleHold() {
+        this.webphone.toggleHold();
+    }
+
+    onToggleMute() {
+        this.webphone.toggleMute();
+    }
+
     onStartAttendedTransfer() {
         this.webphone.startAttendedTransfer();
     }
