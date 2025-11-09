@@ -3,193 +3,256 @@
     <t t-name="phone.WebphonePanel">
         <div
             t-if="state.panelOpen"
-            t-attf-class="o_webphone_panel #{props.floating === false ? '' : 'o_webphone_panel--floating'}"
+            t-attf-class="o_webphone_wrapper #{props.floating === false ? '' : 'o_webphone_wrapper--floating'}"
         >
-            <div class="o_webphone_panel__header">
-                <div class="o_webphone_panel__header-title">
-                    <span class="fw-semibold">Webphone</span>
-                    <span class="badge bg-secondary" t-esc="state.status"/>
+            <div class="o_webphone_history_panel" t-att-class="{'o_webphone_history_panel--open': state.historyPanelOpen}">
+                <div class="o_webphone_history__header d-flex justify-content-between align-items-center">
+                    <span><i class="fa fa-clock me-1"/>Recent calls</span>
                 </div>
-                <div class="d-flex gap-2">
-                    <button
-                        class="btn btn-sm btn-light"
-                        type="button"
-                        t-on-click="toggleMinimize"
-                        t-att-title="state.minimized ? 'Restore' : 'Minimize'"
-                    >
-                        <i t-att-class="state.minimized ? 'fa fa-window-maximize' : 'fa fa-minus'"/>
-                    </button>
-                    <button class="btn btn-sm btn-light" type="button" t-on-click="closePanel">
-                        <i class="fa fa-times"/>
-                    </button>
+                <div class="o_webphone_history__list">
+                    <t t-if="state.callHistory.length">
+                        <t t-foreach="state.callHistory" t-as="entry" t-key="entry.id">
+                            <div class="o_webphone_history__item">
+                                <div class="o_webphone_history__icon">
+                                    <i t-att-class="getCallDirectionIcon(entry.direction)"/>
+                                </div>
+                                <div class="o_webphone_history__meta flex-grow-1">
+                                    <div class="o_webphone_history__name" t-esc="entry.name"/>
+                                    <div
+                                        t-if="entry.number and entry.number != entry.name"
+                                        class="o_webphone_history__cid text-muted small"
+                                    >
+                                        <t t-esc="entry.number"/>
+                                    </div>
+                                    <div class="o_webphone_history__time small text-muted">
+                                        <t t-esc="formatHistoryTimestamp(entry.time)"/>
+                                    </div>
+                                </div>
+                                <span class="badge rounded-pill bg-light text-muted">
+                                    <t t-esc="getCallDirectionLabel(entry.direction)"/>
+                                </span>
+                            </div>
+                        </t>
+                    </t>
+                    <div t-else="" class="small text-muted">No calls yet.</div>
                 </div>
             </div>
-            <div t-if="!state.minimized" class="o_webphone_panel__body">
-                <div t-if="state.loading" class="o_webphone_message">
-                    <i class="fa fa-spinner fa-spin me-2"/> Loading webphone...
-                </div>
-                <div t-elif="state.error" class="o_webphone_message text-danger">
-                    <p>There was an error initialising the webphone:</p>
-                    <pre t-esc="state.error"/>
-                </div>
-                <div t-elif="!state.hasAccount" class="o_webphone_message">
-                    <p>You do not have an active SIP account configured. Contact your administrator.</p>
-                </div>
-                <div t-else="">
-                    <div class="o_webphone_status mb-3">
-                        <span>
-                            Call:
-                            <strong t-esc="state.callStatus"/>
-                            <span t-if="state.callDuration" class="ms-1">
-                                ·
-                                <span class="ms-1" t-esc="formatCallDuration(state.callDuration)"/>
-                            </span>
-                        </span>
-                        <span t-if="state.account" class="ms-3">
-                            Extension:
-                            <strong t-esc="state.account.extension"/>
-                        </span>
+
+            <div
+                t-attf-class="o_webphone_panel #{props.floating === false ? '' : 'o_webphone_panel--floating'} #{state.historyPanelOpen ? 'o_webphone_panel--history-open' : ''}"
+            >
+                <div class="o_webphone_panel__header">
+                    <button
+                        type="button"
+                        class="btn btn-sm btn-outline-secondary me-2 o_webphone_history_toggle"
+                        t-on-click="onToggleHistoryPanel"
+                    >
+                        <i t-att-class="state.historyPanelOpen ? 'fa fa-angle-right' : 'fa fa-angle-left'"/>
+                    </button>
+                    <div class="o_webphone_panel__header-title">
+                        <span class="fw-semibold">Webphone</span>
+                        <span class="badge bg-secondary" t-esc="state.status"/>
                     </div>
-                    <div class="input-group mb-2">
-                        <input
-                            class="form-control"
-                            placeholder="Number to dial"
-                            type="text"
-                            t-att-value="state.dialNumber"
-                            t-on-input="onDialInput"
-                            autocomplete="off"
-                        />
-                        <button class="btn btn-outline-secondary" type="button" t-on-click="onBackspace">
-                            <i class="fa fa-delete-left"/>
-                        </button>
-                    </div>
-                    <div class="o_webphone_keypad">
-                        <t
-                            t-foreach="['1','2','3','4','5','6','7','8','9','*','0','#']"
-                            t-as="digit"
-                            t-key="digit"
-                        >
-                            <button
-                                type="button"
-                                class="btn btn-light"
-                                t-on-click="() => this.onAddDigit(digit)"
-                                t-esc="digit"
-                            />
-                        </t>
-                    </div>
-                    <div class="o_webphone_actions mt-3">
+                    <div class="d-flex gap-2">
                         <button
-                            class="btn btn-success flex-grow-1"
-                            t-on-click="onPlaceCall"
-                            t-att-disabled="['in_call','dialing','transferring','attended_consult','attended_ready','attended_transferring','conference'].includes(state.callStatus)"
-                        >
-                            <i class="fa fa-phone me-2"/>Call
-                        </button>
-                        <button
-                            class="btn btn-warning flex-grow-1"
-                            t-on-click="onTransferCall"
-                            t-att-disabled="state.callStatus != 'in_call'"
-                        >
-                            <i class="fa fa-random me-2"/>Transfer
-                        </button>
-                        <button
-                            class="btn btn-danger flex-grow-1"
-                            t-on-click="onHangup"
-                            t-att-disabled="state.callStatus == 'idle'"
-                        >
-                            <i class="fa fa-phone-slash me-2"/>Hang up
-                        </button>
-                    </div>
-                    <div class="o_webphone_media_actions mt-2">
-                        <button
+                            class="btn btn-sm btn-light"
                             type="button"
-                            t-attf-class="btn flex-grow-1 #{state.holdActive ? 'btn-warning' : 'btn-outline-secondary'}"
-                            t-att-disabled="state.callStatus != 'in_call' or state.attendedActive"
-                            t-on-click="onToggleHold"
+                            t-on-click="toggleMinimize"
+                            t-att-title="state.minimized ? 'Restore' : 'Minimize'"
                         >
-                            <i class="fa fa-pause me-2"/>
-                            <t t-esc="state.holdActive ? 'Resume' : 'Hold'"/>
+                            <i t-att-class="state.minimized ? 'fa fa-window-maximize' : 'fa fa-minus'"/>
                         </button>
-                        <button
-                            type="button"
-                            t-attf-class="btn flex-grow-1 #{state.muted ? 'btn-secondary' : 'btn-outline-secondary'}"
-                            t-att-disabled="!['in_call','attended_consult','attended_ready','attended_transferring','conference'].includes(state.callStatus)"
-                            t-on-click="onToggleMute"
-                        >
-                            <i t-att-class="state.muted ? 'fa fa-microphone-slash me-2' : 'fa fa-microphone me-2'"/>
-                            <t t-esc="state.muted ? 'Unmute' : 'Mute'"/>
+                        <button class="btn btn-sm btn-light" type="button" t-on-click="closePanel">
+                            <i class="fa fa-times"/>
                         </button>
                     </div>
-                    <div class="o_webphone_attended_actions mt-2">
-                        <t t-if="state.callStatus == 'in_call' and !state.attendedActive">
-                            <button
-                                class="btn btn-outline-warning w-100"
-                                type="button"
-                                t-on-click="onStartAttendedTransfer"
+                </div>
+
+                <div t-if="!state.minimized" class="o_webphone_panel__body">
+                    <div t-if="state.loading" class="o_webphone_message">
+                        <i class="fa fa-spinner fa-spin me-2"/> Loading webphone...
+                    </div>
+                    <div t-elif="state.error" class="o_webphone_message text-danger">
+                        <p>There was an error initialising the webphone:</p>
+                        <pre t-esc="state.error"/>
+                    </div>
+                    <div t-elif="!state.hasAccount" class="o_webphone_message">
+                        <p>You do not have an active SIP account configured. Contact your administrator.</p>
+                    </div>
+                    <div t-else="">
+                        <div class="o_webphone_status mb-3">
+                            <div class="d-flex align-items-center gap-3 flex-wrap">
+                                <span class="badge rounded-pill bg-light text-muted d-flex align-items-center gap-1">
+                                    <i t-att-class="getCallDirectionIcon(state.callDirection)"/>
+                                    <t t-esc="getCallDirectionLabel(state.callDirection)"/>
+                                </span>
+                                <span t-if="state.account">
+                                    Extension: <strong t-esc="state.account.extension"/>
+                                </span>
+                                <span t-if="state.callDuration" class="text-muted">
+                                    · <span class="ms-1" t-esc="formatCallDuration(state.callDuration)"/>
+                                </span>
+                            </div>
+                            <div
+                                t-if="state.activeCall"
+                                class="o_webphone_call_details mt-1 d-flex align-items-center gap-2 flex-wrap"
                             >
-                                <i class="fa fa-user-tag me-2"/>Att. transfer
-                            </button>
-                        </t>
-                        <t t-elif="state.attendedActive">
-                            <t t-if="state.conferenceActive">
-                                <div class="d-flex gap-2">
-                                    <button class="btn btn-danger flex-grow-1" t-on-click="onEndConference">
-                                        <i class="fa fa-users-slash me-2"/>End conference
-                                    </button>
-                                    <button
-                                        class="btn btn-outline-secondary flex-grow-1"
-                                        t-on-click="onCancelAttendedTransfer"
-                                    >
-                                        <i class="fa fa-user-minus me-2"/>Drop third party
-                                    </button>
-                                </div>
-                                <div class="small text-muted mt-2">
-                                    Conference with <strong t-esc="state.attendedNumber"/> in progress.
-                                </div>
-                            </t>
-                            <t t-else="">
-                                <div class="d-flex gap-2">
-                                    <button
-                                        class="btn btn-warning flex-grow-1"
-                                        t-att-disabled="!state.attendedReady or state.attendedStatus == 'transferring'"
-                                        t-on-click="onCompleteAttendedTransfer"
-                                    >
-                                        <i class="fa fa-share-from-square me-2"/>Complete transfer
-                                    </button>
-                                    <button
-                                        class="btn btn-outline-secondary flex-grow-1"
-                                        t-att-disabled="state.attendedStatus == 'transferring'"
-                                        t-on-click="onCancelAttendedTransfer"
-                                    >
-                                        <i class="fa fa-ban me-2"/>Cancel consult
-                                    </button>
-                                </div>
-                                <button
-                                    t-if="state.attendedReady"
-                                    class="btn btn-outline-primary w-100 mt-2"
-                                    type="button"
-                                    t-att-disabled="state.attendedStatus == 'transferring'"
-                                    t-on-click="onStartConference"
+                                <strong t-esc="state.activeCall.name"/>
+                                <span
+                                    t-if="state.activeCall.number and state.activeCall.number != state.activeCall.name"
+                                    class="text-muted"
                                 >
-                                    <i class="fa fa-users me-2"/>Start conference
-                                </button>
-                                <div class="small text-muted mt-2">
-                                    <t t-if="state.attendedStatus == 'consulting'">
-                                        Consulting <strong t-esc="state.attendedNumber"/>.
-                                    </t>
-                                    <t t-elif="state.attendedStatus == 'ready'">
-                                        Connected with <strong t-esc="state.attendedNumber"/>. Complete, conference or cancel.
-                                    </t>
-                                    <t t-elif="state.attendedStatus == 'transferring'">
-                                        Finalising attended transfer...
-                                    </t>
-                                </div>
+                                    (<t t-esc="state.activeCall.number"/>)
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="input-group mb-2">
+                            <input
+                                class="form-control"
+                                placeholder="Number to dial"
+                                type="text"
+                                t-att-value="state.dialNumber"
+                                t-on-input="onDialInput"
+                                autocomplete="off"
+                            />
+                            <button class="btn btn-outline-secondary" type="button" t-on-click="onBackspace">
+                                <i class="fa fa-delete-left"/>
+                            </button>
+                        </div>
+
+                        <div class="o_webphone_keypad">
+                            <t
+                                t-foreach="['1','2','3','4','5','6','7','8','9','*','0','#']"
+                                t-as="digit"
+                                t-key="digit"
+                            >
+                                <button
+                                    type="button"
+                                    class="btn btn-light"
+                                    t-on-click="() => this.onAddDigit(digit)"
+                                    t-esc="digit"
+                                />
                             </t>
-                        </t>
+                        </div>
+
+                        <div class="o_webphone_actions mt-3">
+                            <button
+                                class="btn btn-success flex-grow-1"
+                                t-on-click="onPlaceCall"
+                                t-att-disabled="['in_call','dialing','transferring','attended_consult','attended_ready','attended_transferring','conference'].includes(state.callStatus)"
+                            >
+                                <i class="fa fa-phone me-2"/>Call
+                            </button>
+                            <button
+                                class="btn btn-warning flex-grow-1"
+                                t-on-click="onTransferCall"
+                                t-att-disabled="state.callStatus != 'in_call'"
+                            >
+                                <i class="fa fa-random me-2"/>Transfer
+                            </button>
+                            <button
+                                class="btn btn-danger flex-grow-1"
+                                t-on-click="onHangup"
+                                t-att-disabled="state.callStatus == 'idle'"
+                            >
+                                <i class="fa fa-phone-slash me-2"/>Hang up
+                            </button>
+                        </div>
+
+                        <div class="o_webphone_media_actions mt-2">
+                            <button
+                                type="button"
+                                t-attf-class="btn flex-grow-1 #{state.holdActive ? 'btn-warning' : 'btn-outline-secondary'}"
+                                t-att-disabled="state.callStatus != 'in_call' or state.attendedActive"
+                                t-on-click="onToggleHold"
+                            >
+                                <i class="fa fa-pause me-2"/>
+                                <t t-esc="state.holdActive ? 'Resume' : 'Hold'"/>
+                            </button>
+                            <button
+                                type="button"
+                                t-attf-class="btn flex-grow-1 #{state.muted ? 'btn-secondary' : 'btn-outline-secondary'}"
+                                t-att-disabled="!['in_call','attended_consult','attended_ready','attended_transferring','conference'].includes(state.callStatus)"
+                                t-on-click="onToggleMute"
+                            >
+                                <i t-att-class="state.muted ? 'fa fa-microphone-slash me-2' : 'fa fa-microphone me-2'"/>
+                                <t t-esc="state.muted ? 'Unmute' : 'Mute'"/>
+                            </button>
+                        </div>
+
+                        <div class="o_webphone_attended_actions mt-2">
+                            <t t-if="state.callStatus == 'in_call' and !state.attendedActive">
+                                <button
+                                    class="btn btn-outline-warning w-100"
+                                    type="button"
+                                    t-on-click="onStartAttendedTransfer"
+                                >
+                                    <i class="fa fa-user-tag me-2"/>Att. transfer
+                                </button>
+                            </t>
+                            <t t-elif="state.attendedActive">
+                                <t t-if="state.conferenceActive">
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-danger flex-grow-1" t-on-click="onEndConference">
+                                            <i class="fa fa-users-slash me-2"/>End conference
+                                        </button>
+                                        <button
+                                            class="btn btn-outline-secondary flex-grow-1"
+                                            t-on-click="onCancelAttendedTransfer"
+                                        >
+                                            <i class="fa fa-user-minus me-2"/>Drop third party
+                                        </button>
+                                    </div>
+                                    <div class="small text-muted mt-2">
+                                        Conference with <strong t-esc="state.attendedNumber"/> in progress.
+                                    </div>
+                                </t>
+                                <t t-else="">
+                                    <div class="d-flex gap-2">
+                                        <button
+                                            class="btn btn-warning flex-grow-1"
+                                            t-att-disabled="!state.attendedReady or state.attendedStatus == 'transferring'"
+                                            t-on-click="onCompleteAttendedTransfer"
+                                        >
+                                            <i class="fa fa-share-from-square me-2"/>Complete transfer
+                                        </button>
+                                        <button
+                                            class="btn btn-outline-secondary flex-grow-1"
+                                            t-att-disabled="state.attendedStatus == 'transferring'"
+                                            t-on-click="onCancelAttendedTransfer"
+                                        >
+                                            <i class="fa fa-ban me-2"/>Cancel consult
+                                        </button>
+                                    </div>
+                                    <button
+                                        t-if="state.attendedReady"
+                                        class="btn btn-outline-primary w-100 mt-2"
+                                        type="button"
+                                        t-att-disabled="state.attendedStatus == 'transferring'"
+                                        t-on-click="onStartConference"
+                                    >
+                                        <i class="fa fa-users me-2"/>Start conference
+                                    </button>
+                                    <div class="small text-muted mt-2">
+                                        <t t-if="state.attendedStatus == 'consulting'">
+                                            Consulting <strong t-esc="state.attendedNumber"/>.
+                                        </t>
+                                        <t t-elif="state.attendedStatus == 'ready'">
+                                            Connected with <strong t-esc="state.attendedNumber"/>. Complete, conference or cancel.
+                                        </t>
+                                        <t t-elif="state.attendedStatus == 'transferring'">
+                                            Finalising attended transfer...
+                                        </t>
+                                    </div>
+                                </t>
+                            </t>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
+
         <div
             t-if="props.floating !== false and state.callStatus == 'incoming'"
             t-ref="incomingBanner"
@@ -220,6 +283,7 @@
                 </button>
             </div>
         </div>
+
         <div class="o_webphone_audio_buffers">
             <audio t-ref="remoteAudio" autoplay="autoplay" playsinline="playsinline"/>
             <audio t-ref="conferenceAudio" autoplay="autoplay" playsinline="playsinline"/>

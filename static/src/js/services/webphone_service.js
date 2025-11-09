@@ -43,6 +43,10 @@ registry.category("services").add("webphone", {
             holdActive: false,
             muted: false,
             callDuration: 0,
+            callHistory: [],
+            historyPanelOpen: false,
+            callDirection: "idle", // 'incoming', 'outgoing', 'transfer', etc.
+            activeCall: null,
         });
 
         let sipLibraryPromise = null;
@@ -55,10 +59,12 @@ registry.category("services").add("webphone", {
         let secondaryAudioElement = null;
         let attendedSession = null;
         let currentSessionOnHold = false;
+        const MAX_CALL_HISTORY = 20;
         const localStreams = new Set();
         let localAudioMuted = false;
         let callTimerId = null;
         let callTimerStart = null;
+        let callHistoryCounter = 0;
 
         const ensureSipLibrary = async () => {
             if (window.SIP) {
@@ -119,6 +125,7 @@ registry.category("services").add("webphone", {
             localAudioMuted = false;
             state.muted = false;
             stopCallTimer();
+            state.activeCall = null;
         };
 
         const attachRemoteStream = (sdh, { target = "primary" } = {}) => {
@@ -185,6 +192,21 @@ registry.category("services").add("webphone", {
             }
             callTimerStart = null;
             state.callDuration = 0;
+        };
+
+        const recordCallHistory = (number, direction = "unknown", name = null) => {
+            const cleaned = (number || "").trim();
+            if (!cleaned) {
+                return;
+            }
+            const entry = {
+                id: ++callHistoryCounter,
+                number: cleaned,
+                time: Date.now(),
+                direction,
+                name: name || cleaned,
+            };
+            state.callHistory = [entry, ...state.callHistory].slice(0, MAX_CALL_HISTORY);
         };
 
         const setMuteState = (shouldMute) => {
@@ -302,12 +324,14 @@ registry.category("services").add("webphone", {
             unregisterSessionStream(currentSession);
             currentSession = null;
             state.callStatus = "idle";
+            state.callDirection = "idle";
             state.incomingRinging = false;
             currentSessionOnHold = false;
             state.holdActive = false;
             setMuteState(false);
             localStreams.clear();
             stopCallTimer();
+            state.activeCall = null;
             clearAttendedState({ hangupSession: true, resumeMain: false });
         };
 
@@ -419,8 +443,16 @@ registry.category("services").add("webphone", {
             }
             pendingIncomingSession = invitation;
             state.callStatus = "incoming";
+            state.callDirection = "incoming";
             state.incomingRinging = true;
-            state.incomingCaller = formatRemoteParty(invitation.remoteIdentity);
+            const details = getIdentityDetails(invitation.remoteIdentity);
+            state.incomingCaller = details.name;
+            state.activeCall = {
+                direction: "incoming",
+                name: details.name,
+                number: details.number,
+            };
+            recordCallHistory(details.number || details.name, "incoming", details.name);
             invitation.stateChange.addListener((newState) => {
                 if (newState === window.SIP.SessionState.Terminated && pendingIncomingSession === invitation) {
                     pendingIncomingSession = null;
@@ -448,7 +480,7 @@ registry.category("services").add("webphone", {
                         state.status = "no_account";
                         return;
                     }
-                    state.dialNumber = result.account.extension || "";
+                    state.dialNumber = "";
                     await ensureSipLibrary();
                     await startUserAgent();
                 } catch (error) {
@@ -469,6 +501,7 @@ registry.category("services").add("webphone", {
             state.panelOpen = !state.panelOpen;
             if (!state.panelOpen) {
                 state.minimized = false;
+                state.historyPanelOpen = false;
             }
         };
 
@@ -515,6 +548,13 @@ registry.category("services").add("webphone", {
                 notification.add(_t("The destination SIP URI is invalid."), { type: "danger" });
                 return;
             }
+            state.callDirection = "outgoing";
+            state.activeCall = {
+                direction: "outgoing",
+                name: target,
+                number: target,
+            };
+            recordCallHistory(target, "outgoing", target);
             state.callStatus = "dialing";
             try {
                 const inviter = new SIP.Inviter(userAgent, destination, {
@@ -537,6 +577,12 @@ registry.category("services").add("webphone", {
             if (!number) {
                 return;
             }
+            state.callDirection = "outgoing";
+            state.activeCall = {
+                direction: "outgoing",
+                name: number,
+                number: number,
+            };
             state.dialNumber = number;
             await placeCall();
         };
@@ -549,6 +595,14 @@ registry.category("services").add("webphone", {
             pendingIncomingSession = null;
             state.incomingRinging = false;
             state.callStatus = "connecting";
+            state.callDirection = "incoming";
+            if (!state.activeCall) {
+                state.activeCall = {
+                    direction: "incoming",
+                    name: state.incomingCaller || _t("Unknown"),
+                    number: state.incomingCaller || _t("Unknown"),
+                };
+            }
             configureSession(session);
             try {
                 await session.accept({
@@ -571,6 +625,7 @@ registry.category("services").add("webphone", {
             pendingIncomingSession = null;
             state.callStatus = "idle";
             state.incomingRinging = false;
+            state.activeCall = null;
         };
 
         const hangup = () => {
@@ -662,6 +717,10 @@ registry.category("services").add("webphone", {
                 return;
             }
             setMuteState(!state.muted);
+        };
+
+        const toggleHistoryPanel = () => {
+            state.historyPanelOpen = !state.historyPanelOpen;
         };
 
         const startConference = async () => {
@@ -815,6 +874,7 @@ registry.category("services").add("webphone", {
                 wasConference ? _t("Conference ended.") : _t("Attended transfer cancelled."),
                 { type: "info" }
             );
+            state.callDirection = "in_call";
         };
 
         const updateDialNumber = (value) => {
@@ -868,6 +928,7 @@ registry.category("services").add("webphone", {
             transferCall,
             toggleHold,
             toggleMute,
+            toggleHistoryPanel,
             startConference,
             endConference,
             startAttendedTransfer,
@@ -916,4 +977,21 @@ function formatRemoteParty(identity) {
         return identity.uri.user;
     }
     return "Unknown";
+}
+
+function getIdentityDetails(identity) {
+    if (!identity) {
+        return { name: _t("Unknown"), number: _t("Unknown") };
+    }
+    const number =
+        (identity.uri && identity.uri.user) ||
+        identity.number ||
+        identity.contact ||
+        identity.id ||
+        null;
+    const name = identity.displayName || identity.friendlyName || number || _t("Unknown");
+    return {
+        name,
+        number: number || name,
+    };
 }

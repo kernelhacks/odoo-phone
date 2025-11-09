@@ -123,6 +123,10 @@ export class WebphonePanel extends Component {
         this.webphone.toggleMute();
     }
 
+    onToggleHistoryPanel() {
+        this.webphone.toggleHistoryPanel();
+    }
+
     onStartConference() {
         this.webphone.startConference();
     }
@@ -262,6 +266,41 @@ export class WebphonePanel extends Component {
             return `${hours}:${minutes}:${secs}`;
         }
         return `${minutes}:${secs}`;
+    }
+
+    formatHistoryTimestamp(value) {
+        if (!value) {
+            return "";
+        }
+        try {
+            return new Intl.DateTimeFormat(undefined, {
+                dateStyle: "short",
+                timeStyle: "short",
+            }).format(new Date(value));
+        } catch (_error) {
+            const date = new Date(value);
+            return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+        }
+    }
+
+    getCallDirectionIcon(direction) {
+        switch (direction) {
+            case "outgoing":
+                return "fa fa-arrow-up text-danger";
+            case "incoming":
+                return "fa fa-arrow-down text-success";
+            case "transfer":
+                return "fa fa-exchange-alt text-warning";
+            default:
+                return "fa fa-circle text-muted";
+        }
+    }
+
+    getCallDirectionLabel(direction) {
+        if (!direction || direction === "idle") {
+            return "Idle";
+        }
+        return direction.charAt(0).toUpperCase() + direction.slice(1);
     }
 
     playIncomingTone() {
