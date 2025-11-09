@@ -95,11 +95,15 @@
         </div>
         <div
             t-if="props.floating !== false and state.callStatus == 'incoming'"
+            t-ref="incomingBanner"
             t-att-class="{
                 'o_webphone_banner': true,
                 'o_webphone_banner--floating': state.panelOpen,
-                'o_webphone_banner--corner': !state.panelOpen
+                'o_webphone_banner--corner': !state.panelOpen,
+                'o_webphone_banner--dragging': isBannerDragging()
             }"
+            t-att-style="getBannerInlineStyle()"
+            t-on-pointerdown="onBannerPointerDown"
         >
             <div class="o_webphone_banner__content">
                 <div class="o_webphone_banner__avatar">
