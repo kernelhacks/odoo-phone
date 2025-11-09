@@ -40,6 +40,10 @@
                         <span>
                             Call:
                             <strong t-esc="state.callStatus"/>
+                            <span t-if="state.callDuration" class="ms-1">
+                                ·
+                                <span class="ms-1" t-esc="formatCallDuration(state.callDuration)"/>
+                            </span>
                         </span>
                         <span t-if="state.account" class="ms-3">
                             Extension:

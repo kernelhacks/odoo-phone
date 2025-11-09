@@ -42,6 +42,7 @@ registry.category("services").add("webphone", {
             conferenceActive: false,
             holdActive: false,
             muted: false,
+            callDuration: 0,
         });
 
         let sipLibraryPromise = null;
@@ -56,6 +57,8 @@ registry.category("services").add("webphone", {
         let currentSessionOnHold = false;
         const localStreams = new Set();
         let localAudioMuted = false;
+        let callTimerId = null;
+        let callTimerStart = null;
 
         const ensureSipLibrary = async () => {
             if (window.SIP) {
@@ -115,6 +118,7 @@ registry.category("services").add("webphone", {
             localStreams.clear();
             localAudioMuted = false;
             state.muted = false;
+            stopCallTimer();
         };
 
         const attachRemoteStream = (sdh, { target = "primary" } = {}) => {
@@ -158,6 +162,29 @@ registry.category("services").add("webphone", {
             if (stream && localStreams.has(stream)) {
                 localStreams.delete(stream);
             }
+        };
+
+        const startCallTimer = () => {
+            if (callTimerId) {
+                window.clearInterval(callTimerId);
+            }
+            callTimerStart = Date.now();
+            state.callDuration = 0;
+            callTimerId = window.setInterval(() => {
+                if (!callTimerStart) {
+                    return;
+                }
+                state.callDuration = Math.floor((Date.now() - callTimerStart) / 1000);
+            }, 1000);
+        };
+
+        const stopCallTimer = () => {
+            if (callTimerId) {
+                window.clearInterval(callTimerId);
+                callTimerId = null;
+            }
+            callTimerStart = null;
+            state.callDuration = 0;
         };
 
         const setMuteState = (shouldMute) => {
@@ -280,6 +307,7 @@ registry.category("services").add("webphone", {
             state.holdActive = false;
             setMuteState(false);
             localStreams.clear();
+            stopCallTimer();
             clearAttendedState({ hangupSession: true, resumeMain: false });
         };
 
@@ -297,6 +325,9 @@ registry.category("services").add("webphone", {
             session.stateChange.addListener((newState) => {
                 if (newState === SessionState.Established) {
                     state.callStatus = "in_call";
+                    if (!callTimerId) {
+                        startCallTimer();
+                    }
                 }
                 if (newState === SessionState.Terminated) {
                     onCallTerminated();

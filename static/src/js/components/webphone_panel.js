@@ -251,6 +251,19 @@ export class WebphonePanel extends Component {
         return this.bannerDrag.dragging;
     }
 
+    formatCallDuration(seconds) {
+        const totalSeconds = Math.max(0, Math.floor(seconds || 0));
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60)
+            .toString()
+            .padStart(2, "0");
+        const secs = (totalSeconds % 60).toString().padStart(2, "0");
+        if (hours) {
+            return `${hours}:${minutes}:${secs}`;
+        }
+        return `${minutes}:${secs}`;
+    }
+
     playIncomingTone() {
         const audio = this.incomingAudio.el;
         if (!audio || this.isIncomingAudioPlaying) {
