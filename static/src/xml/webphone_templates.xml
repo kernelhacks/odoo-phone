@@ -68,7 +68,7 @@
                             <button
                                 type="button"
                                 class="btn btn-light"
-                                t-on-click="() => onAddDigit(digit)"
+                                t-on-click="() => this.onAddDigit(digit)"
                                 t-esc="digit"
                             />
                         </t>

@@ -11,6 +11,21 @@ import {
 } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 
+const DTMF_FREQUENCIES = {
+    "1": [697, 1209],
+    "2": [697, 1336],
+    "3": [697, 1477],
+    "4": [770, 1209],
+    "5": [770, 1336],
+    "6": [770, 1477],
+    "7": [852, 1209],
+    "8": [852, 1336],
+    "9": [852, 1477],
+    "*": [941, 1209],
+    "0": [941, 1336],
+    "#": [941, 1477],
+};
+
 export class WebphonePanel extends Component {
     static props = {
         floating: { type: Boolean, optional: true },
@@ -33,6 +48,8 @@ export class WebphonePanel extends Component {
             y: null,
         });
         this.isIncomingAudioPlaying = false;
+        this.toneContext = null;
+        this.toneMasterGain = null;
         onMounted(() => {
             this.webphone.setAudioElement(this.remoteAudio.el);
         });
@@ -54,7 +71,10 @@ export class WebphonePanel extends Component {
             },
             () => [this.state.callStatus, this.state.incomingRinging]
         );
-        onWillUnmount(() => this.stopIncomingTone());
+        onWillUnmount(() => {
+            this.stopIncomingTone();
+            this.teardownToneContext();
+        });
         if (typeof window !== "undefined") {
             useExternalListener(window, "pointermove", (ev) => this.onBannerPointerMove(ev));
             useExternalListener(window, "pointerup", (ev) => this.onBannerPointerUp(ev));
@@ -95,6 +115,7 @@ export class WebphonePanel extends Component {
     }
 
     onAddDigit(digit) {
+        this.playDtmfTone(digit);
         this.webphone.appendDigit(digit);
     }
 
@@ -221,5 +242,66 @@ export class WebphonePanel extends Component {
         audio.pause();
         audio.currentTime = 0;
         this.isIncomingAudioPlaying = false;
+    }
+
+    ensureToneContext() {
+        if (typeof window === "undefined") {
+            return null;
+        }
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) {
+            return null;
+        }
+        if (!this.toneContext) {
+            this.toneContext = new AudioContextClass();
+            this.toneMasterGain = this.toneContext.createGain();
+            this.toneMasterGain.gain.value = 0.4;
+            this.toneMasterGain.connect(this.toneContext.destination);
+        }
+        if (this.toneContext.state === "suspended") {
+            this.toneContext.resume();
+        }
+        return this.toneContext;
+    }
+
+    playDtmfTone(digit) {
+        const freqs = DTMF_FREQUENCIES[digit];
+        if (!freqs?.length) {
+            return;
+        }
+        const ctx = this.ensureToneContext();
+        if (!ctx || !this.toneMasterGain) {
+            return;
+        }
+        const now = ctx.currentTime;
+        const gainNode = ctx.createGain();
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(0.3, now + 0.01);
+        gainNode.gain.setTargetAtTime(0.0, now + 0.18, 0.05);
+        gainNode.connect(this.toneMasterGain);
+        freqs.forEach((freq) => {
+            const osc = ctx.createOscillator();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(freq, now);
+            osc.connect(gainNode);
+            osc.start(now);
+            osc.stop(now + 0.25);
+            osc.onended = () => {
+                osc.disconnect();
+            };
+        });
+        if (typeof window !== "undefined") {
+            window.setTimeout(() => {
+                gainNode.disconnect();
+            }, 300);
+        }
+    }
+
+    teardownToneContext() {
+        if (this.toneContext) {
+            this.toneContext.close?.();
+            this.toneContext = null;
+            this.toneMasterGain = null;
+        }
     }
 }
