@@ -26,3 +26,15 @@ This module embeds a SIP/WebRTC softphone directly inside Odoo. Every internal u
 - Credentials are stored in plaintext to allow the web client to authenticate. Keep access restricted to trusted administrators and consider deploying at-rest encryption if required.
 - The default STUN server (`stun.l.google.com:19302`) is used when no ICE servers are defined.
 - Calls are handled through the embedded SIP.js stack, so browser permissions for microphone access must be granted.
+
+### Disclaimer
+This module was made entirely with AI; no verification of the code was used at all. Use it at your own risk.
+
+<img width="1927" height="881" alt="image" src="https://github.com/user-attachments/assets/9b236876-768e-407b-a4f2-c377a2f6f104" />
+<img width="1925" height="884" alt="image" src="https://github.com/user-attachments/assets/984cda92-1fec-4df0-bac4-caddcc4fead9" />
+<img width="1921" height="887" alt="image" src="https://github.com/user-attachments/assets/e778858a-943f-4955-b5a9-daeb9b008df2" />
+<img width="1925" height="884" alt="image" src="https://github.com/user-attachments/assets/3297e5d7-0388-40e9-9624-065a2b9aae7b" />
+<img width="1925" height="884" alt="image" src="https://github.com/user-attachments/assets/da6526b2-2001-42ec-8f83-9d930ab76690" />
+
+
+
