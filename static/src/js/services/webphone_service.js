@@ -881,6 +881,55 @@ registry.category("services").add("webphone", {
             state.dialNumber = value;
         };
 
+        const resolveDtmfSession = () => {
+            if (state.attendedActive && attendedSession && ["attended_consult", "attended_ready"].includes(state.callStatus)) {
+                return attendedSession;
+            }
+            return currentSession;
+        };
+
+        const sendDtmf = async (digit) => {
+            if (!digit || !/^[0-9*#A-D]$/.test(digit)) {
+                return false;
+            }
+            const session = resolveDtmfSession();
+            if (!session) {
+                return false;
+            }
+            const SessionState = window.SIP?.SessionState;
+            if (SessionState && session.state !== SessionState.Established) {
+                return false;
+            }
+            const sdh = session.sessionDescriptionHandler;
+            if (sdh?.sendDtmf) {
+                try {
+                    const sent = sdh.sendDtmf(digit);
+                    if (sent) {
+                        return true;
+                    }
+                } catch (error) {
+                    console.warn("Webphone failed to send RTP DTMF", error);
+                }
+            }
+            if (typeof session.info === "function") {
+                try {
+                    await session.info({
+                        requestOptions: {
+                            body: {
+                                contentDisposition: "render",
+                                contentType: "application/dtmf-relay",
+                                content: `Signal=${digit}\r\nDuration=250`,
+                            },
+                        },
+                    });
+                    return true;
+                } catch (error) {
+                    console.warn("Webphone failed to send INFO DTMF", error);
+                }
+            }
+            return false;
+        };
+
         const appendDigit = (digit) => {
             state.dialNumber = (state.dialNumber || "") + digit;
         };
@@ -935,6 +984,7 @@ registry.category("services").add("webphone", {
             completeAttendedTransfer,
             cancelAttendedTransfer,
             updateDialNumber,
+            sendDtmf,
             appendDigit,
             backspaceDigit,
             setAudioElements,

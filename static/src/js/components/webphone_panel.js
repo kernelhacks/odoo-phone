@@ -151,8 +151,9 @@ export class WebphonePanel extends Component {
         this.webphone.updateDialNumber(ev.target.value);
     }
 
-    onAddDigit(digit) {
+    async onAddDigit(digit) {
         this.playDtmfTone(digit);
+        await this.webphone.sendDtmf(digit);
         this.webphone.appendDigit(digit);
     }
 
