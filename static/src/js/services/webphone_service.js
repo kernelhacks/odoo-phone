@@ -6,7 +6,6 @@ import { registry } from "@web/core/registry";
 import { rpc as rpcRequest } from "@web/core/network/rpc";
 
 const LOCAL_SIP_URL = "/phone/static/lib/sipjs/sip-0.21.2.min.js";
-const CDN_SIP_URL = "https://cdn.jsdelivr.net/npm/sip.js@0.21.2/dist/sip.min.js";
 
 function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -71,7 +70,7 @@ registry.category("services").add("webphone", {
                 return;
             }
             if (!sipLibraryPromise) {
-                sipLibraryPromise = loadScript(LOCAL_SIP_URL).catch(() => loadScript(CDN_SIP_URL));
+                sipLibraryPromise = loadScript(LOCAL_SIP_URL);
             }
             await sipLibraryPromise;
             if (!window.SIP) {
@@ -874,7 +873,6 @@ registry.category("services").add("webphone", {
                 wasConference ? _t("Conference ended.") : _t("Attended transfer cancelled."),
                 { type: "info" }
             );
-            state.callDirection = "in_call";
         };
 
         const updateDialNumber = (value) => {
@@ -1011,22 +1009,6 @@ function buildIceServers(account) {
         servers.push({ urls: "stun:stun.l.google.com:19302" });
     }
     return servers;
-}
-
-function formatRemoteParty(identity) {
-    if (!identity) {
-        return "Unknown";
-    }
-    if (identity.displayName) {
-        return identity.displayName;
-    }
-    if (identity.friendlyName) {
-        return identity.friendlyName;
-    }
-    if (identity.uri && identity.uri.user) {
-        return identity.uri.user;
-    }
-    return "Unknown";
 }
 
 function getIdentityDetails(identity) {

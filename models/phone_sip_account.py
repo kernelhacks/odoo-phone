@@ -70,18 +70,14 @@ class PhoneSipAccount(models.Model):
         help="Only enabled SIP accounts are exposed to the webphone.",
     )
 
-    _sql_constraints = [
-        (
-            "phone_sip_account_extension_unique",
-            "unique(extension)",
-            "Each SIP extension must be unique.",
-        ),
-        (
-            "phone_sip_account_user_unique",
-            "unique(user_id)",
-            "Each user can only own a single SIP account.",
-        ),
-    ]
+    _extension_unique = models.Constraint(
+        "unique(extension)",
+        "Each SIP extension must be unique.",
+    )
+    _user_unique = models.Constraint(
+        "unique(user_id)",
+        "Each user can only own a single SIP account.",
+    )
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -100,12 +96,10 @@ class PhoneSipAccount(models.Model):
                     % uri
                 )
 
-    def name_get(self):
-        result = []
+    @api.depends("name", "extension")
+    def _compute_display_name(self):
         for account in self:
-            name = "%s (%s)" % (account.name, account.extension)
-            result.append((account.id, name))
-        return result
+            account.display_name = "%s (%s)" % (account.name, account.extension)
 
     def to_webphone_payload(self):
         """Prepare the configuration payload expected by the web client."""
