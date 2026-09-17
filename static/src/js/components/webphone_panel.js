@@ -26,6 +26,10 @@ const DTMF_FREQUENCIES = {
     "#": [941, 1477],
 };
 
+const RINGBACK_FREQUENCIES = [440, 480];
+const RINGBACK_ON_SECONDS = 2;
+const RINGBACK_OFF_SECONDS = 4;
+
 export class WebphonePanel extends Component {
     static props = {
         floating: { type: Boolean, optional: true },
@@ -49,6 +53,7 @@ export class WebphonePanel extends Component {
             y: null,
         });
         this.isIncomingAudioPlaying = false;
+        this.ringback = null;
         this.toneContext = null;
         this.toneMasterGain = null;
         onMounted(() => {
@@ -72,8 +77,19 @@ export class WebphonePanel extends Component {
             },
             () => [this.state.callStatus, this.state.incomingRinging]
         );
+        useEffect(
+            () => {
+                if (this.state.outgoingRinging) {
+                    this.startRingbackTone();
+                } else {
+                    this.stopRingbackTone();
+                }
+            },
+            () => [this.state.outgoingRinging]
+        );
         onWillUnmount(() => {
             this.stopIncomingTone();
+            this.stopRingbackTone();
             this.teardownToneContext();
         });
         if (typeof window !== "undefined") {
@@ -381,6 +397,69 @@ export class WebphonePanel extends Component {
                 gainNode.disconnect();
             }, 300);
         }
+    }
+
+    // Standard North American ringback: 440 Hz + 480 Hz, two seconds on and
+    // four off. Only used when the network sends no early media of its own.
+    startRingbackTone() {
+        if (this.ringback) {
+            return;
+        }
+        const ctx = this.ensureToneContext();
+        if (!ctx || !this.toneMasterGain) {
+            return;
+        }
+        const gainNode = ctx.createGain();
+        gainNode.gain.value = 0;
+        gainNode.connect(this.toneMasterGain);
+        const oscillators = RINGBACK_FREQUENCIES.map((freq) => {
+            const osc = ctx.createOscillator();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(freq, ctx.currentTime);
+            osc.connect(gainNode);
+            osc.start();
+            return osc;
+        });
+        const burst = () => {
+            const now = ctx.currentTime;
+            gainNode.gain.cancelScheduledValues(now);
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.22, now + 0.05);
+            gainNode.gain.setValueAtTime(0.22, now + RINGBACK_ON_SECONDS - 0.05);
+            gainNode.gain.linearRampToValueAtTime(0, now + RINGBACK_ON_SECONDS);
+        };
+        burst();
+        const cadenceMs = (RINGBACK_ON_SECONDS + RINGBACK_OFF_SECONDS) * 1000;
+        this.ringback = {
+            gainNode,
+            oscillators,
+            intervalId: window.setInterval(burst, cadenceMs),
+        };
+    }
+
+    stopRingbackTone() {
+        if (!this.ringback) {
+            return;
+        }
+        const { gainNode, oscillators, intervalId } = this.ringback;
+        this.ringback = null;
+        window.clearInterval(intervalId);
+        try {
+            const now = this.toneContext?.currentTime ?? 0;
+            gainNode.gain.cancelScheduledValues(now);
+            gainNode.gain.setValueAtTime(0, now);
+        } catch (error) {
+            // The audio context may already be closed; nothing left to silence.
+        }
+        oscillators.forEach((osc) => {
+            try {
+                osc.stop();
+            } catch (error) {
+                // Already stopped.
+            }
+            osc.disconnect();
+        });
+        gainNode.disconnect();
     }
 
     teardownToneContext() {

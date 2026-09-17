@@ -34,6 +34,7 @@ registry.category("services").add("webphone", {
             incomingCaller: "",
             error: null,
             incomingRinging: false,
+            outgoingRinging: false,
             attendedActive: false,
             attendedReady: false,
             attendedNumber: "",
@@ -64,6 +65,7 @@ registry.category("services").add("webphone", {
         let callTimerId = null;
         let callTimerStart = null;
         let callHistoryCounter = 0;
+        let earlyMediaActive = false;
 
         const ensureSipLibrary = async () => {
             if (window.SIP) {
@@ -120,6 +122,8 @@ registry.category("services").add("webphone", {
             }
             currentSessionOnHold = false;
             state.holdActive = false;
+            state.outgoingRinging = false;
+            earlyMediaActive = false;
             localStreams.clear();
             localAudioMuted = false;
             state.muted = false;
@@ -325,6 +329,8 @@ registry.category("services").add("webphone", {
             state.callStatus = "idle";
             state.callDirection = "idle";
             state.incomingRinging = false;
+            state.outgoingRinging = false;
+            earlyMediaActive = false;
             currentSessionOnHold = false;
             state.holdActive = false;
             setMuteState(false);
@@ -348,6 +354,7 @@ registry.category("services").add("webphone", {
             session.stateChange.addListener((newState) => {
                 if (newState === SessionState.Established) {
                     state.callStatus = "in_call";
+                    state.outgoingRinging = false;
                     if (!callTimerId) {
                         startCallTimer();
                     }
@@ -432,6 +439,24 @@ registry.category("services").add("webphone", {
             } catch (error) {
                 state.status = "registration_failed";
                 throw error;
+            }
+        };
+
+        // The callee is alerting. A 183 (or a 180) carrying SDP means the network
+        // is sending us real ringback or an announcement, which reaches the user
+        // through the normal remote stream; anything else is silent on the wire,
+        // so the panel has to generate a ringback tone locally.
+        const handleOutgoingProgress = (response) => {
+            const message = response?.message;
+            const statusCode = message?.statusCode;
+            if (statusCode !== 180 && statusCode !== 183) {
+                return;
+            }
+            if (message?.body && String(message.body).trim()) {
+                earlyMediaActive = true;
+                state.outgoingRinging = false;
+            } else if (!earlyMediaActive) {
+                state.outgoingRinging = true;
             }
         };
 
@@ -557,14 +582,19 @@ registry.category("services").add("webphone", {
             };
             recordCallHistory(label, "outgoing", label);
             state.callStatus = "dialing";
+            earlyMediaActive = false;
+            state.outgoingRinging = false;
             try {
                 const inviter = new SIP.Inviter(userAgent, destination, {
+                    earlyMedia: true,
                     sessionDescriptionHandlerOptions: {
                         constraints: { audio: true, video: false },
                     },
                 });
                 configureSession(inviter);
-                await inviter.invite();
+                await inviter.invite({
+                    requestDelegate: { onProgress: handleOutgoingProgress },
+                });
             } catch (error) {
                 console.error("Error placing webphone call", error);
                 notification.add(_t("Unable to place the call."), { type: "danger" });
@@ -815,6 +845,7 @@ registry.category("services").add("webphone", {
             state.conferenceActive = false;
             try {
                 const inviter = new SIP.Inviter(userAgent, destination, {
+                    earlyMedia: true,
                     sessionDescriptionHandlerOptions: {
                         constraints: { audio: true, video: false },
                     },
